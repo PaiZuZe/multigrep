@@ -2,6 +2,7 @@
 #include <fstream>      //file
 #include <string>
 #include <regex>
+#include <new>
 
 #include <stdlib.h>
 #include <pthread.h>
@@ -22,6 +23,10 @@ void getfiles (std::string dirr_name, std::vector <std::string> &name_list) {
     DIR *current = opendir(dirr_name.c_str());  
     std::regex pattern ("\\.txt"); //will only look for .txt for now.    
 
+    if (current == NULL) {
+        std::cerr << "Error when trying to open " << dirr_name << std::endl;
+        std::exit (EXIT_FAILURE);
+    }
     for (dirent *curr_file = readdir(current); curr_file != NULL; curr_file = readdir(current)) {
         if (curr_file->d_type == DT_DIR) {            
             if (std::strcmp(curr_file->d_name, ".") && std::strcmp(curr_file->d_name, "..")) {
@@ -48,7 +53,9 @@ int find (void *args) {
     int line_number = 0;
     pattern = arg->pat;
     file.open(arg->name.c_str());
-    
+    if (file.fail()) {
+        std::cerr << "There was an error while opening the file " << arg->name << std::endl;
+    }
     while (getline(file, line)) {
         if (std::regex_search(line, pattern)) {
             output.append(arg->name + ": " + std::to_string(line_number) + "\n");
@@ -69,15 +76,17 @@ int main (int argc, char **argv) {
     }
     
     std::vector <std::string> names_list;
+    std::vector <thread_arg> args;
     pthread_mutex_t output_queue;
     pthread_mutex_init(&output_queue, NULL);
     
     getfiles(argv[2], names_list);
-    thread_arg *args = (thread_arg *) malloc(names_list.size() * sizeof(thread_arg));
     
     for (auto i = names_list.begin(); i != names_list.end(); i++) {        
-        args[i - names_list.begin()].pat = argv[3];
+        std::cout << *i << std::endl;
+        args.push_back(thread_arg());
         args[i - names_list.begin()].name = *i;
+        args[i - names_list.begin()].pat = argv[3];
         args[i - names_list.begin()].output_queue = output_queue;
         find(&args[i - names_list.begin()]);
     }
