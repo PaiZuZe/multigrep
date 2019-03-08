@@ -12,7 +12,7 @@
 
 typedef struct {
     std::string name;
-    char *pat;
+    char *pattern;
     pthread_mutex_t output_queue;
 } thread_arg;
 
@@ -43,18 +43,21 @@ void getfiles (std::string dirr_name, std::vector <std::string> &name_list) {
 }
 
 /*
-    This function will look for all lines with the regex pattern pat in the file name. All lines that have a match will be printed to de stdout.
+    This function will look for all lines with the regex pattern pat in the file name. 
+    All lines that have a match will be printed to the stdout.
 */
-int find (void *args) {
+void *find (void *args) {
     thread_arg *arg = (thread_arg *) args;
     std::ifstream file;
     std::string line, output;
     std::regex pattern;
     int line_number = 0;
-    pattern = arg->pat;
+    pattern = arg->pattern;
     file.open(arg->name.c_str());
     if (file.fail()) {
+        pthread_mutex_lock(&arg->output_queue);
         std::cerr << "There was an error while opening the file " << arg->name << std::endl;
+        pthread_mutex_unlock(&arg->output_queue);
     }
     while (getline(file, line)) {
         if (std::regex_search(line, pattern)) {
@@ -66,7 +69,7 @@ int find (void *args) {
     std::cout << output;
     pthread_mutex_unlock(&arg->output_queue);
     file.close();
-    return 0;
+    return NULL;
 }
 
 int main (int argc, char **argv) {
@@ -76,19 +79,24 @@ int main (int argc, char **argv) {
     }
     
     std::vector <std::string> names_list;
-    std::vector <thread_arg> args;
+    std::vector <thread_arg *> args;
+    std::vector <pthread_t> threads;
     pthread_mutex_t output_queue;
     pthread_mutex_init(&output_queue, NULL);
     
     getfiles(argv[2], names_list);
-    
     for (auto i = names_list.begin(); i != names_list.end(); i++) {        
-        std::cout << *i << std::endl;
-        args.push_back(thread_arg());
-        args[i - names_list.begin()].name = *i;
-        args[i - names_list.begin()].pat = argv[3];
-        args[i - names_list.begin()].output_queue = output_queue;
-        find(&args[i - names_list.begin()]);
+        auto j = i - names_list.begin();
+        args.push_back(new thread_arg());
+        threads.push_back(pthread_t());
+        args[j]->name = *i;
+        args[j]->pattern = argv[3];
+        args[j]->output_queue = output_queue;
+        pthread_create(&threads[j], NULL, &find, args[j]);
+    }
+    
+    for (auto i = threads.begin(); i != threads.end(); i++) {
+        pthread_join(*i, NULL);
     }
     return 0;
 }

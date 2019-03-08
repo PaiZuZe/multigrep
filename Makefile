@@ -1,8 +1,8 @@
 CFLAGS=-Wall -Wextra -Werror -pedantic -lpthread
-TEST=-pedantic
+TEST=-lpthread
 
 file: file.cpp
-	g++ file.cpp $(TEST) -o bob
+	g++ file.cpp $(CFLAGS) -g -o bob
 
 clean: 
 	rm bob
