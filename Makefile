@@ -1,8 +1,10 @@
 CFLAGS=-Wall -Wextra -Werror -pedantic -lpthread
-TEST=-lpthread
 
 file: file.cpp
-	g++ file.cpp $(CFLAGS) -g -o bob
+	g++ file.cpp $(CFLAGS) -g -o pgrep
 
-clean: 
-	rm bob
+clean:
+	rm pgrep
+
+test:
+	./pgrep 32 ~/Documents i
