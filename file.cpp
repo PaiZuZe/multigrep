@@ -77,21 +77,21 @@ int main (int argc, char **argv) {
         std::cout << "Wrong number of arguments: it's " << argc << " , should be 4\n";
         return 1;
     }
-    
+
     std::vector <std::string> names_list;
     std::vector <thread_arg *> args;
     std::vector <pthread_t> threads;
     pthread_mutex_t output_queue;
     pthread_mutex_init(&output_queue, NULL);
     
-    getfiles(argv[2], names_list);
+    getfiles(argv[3], names_list);
     for (auto i = names_list.begin(); i != names_list.end(); i++) {        
         auto j = i - names_list.begin();
         args.push_back(new thread_arg());
-        threads.push_back(pthread_t());
         args[j]->name = *i;
-        args[j]->pattern = argv[3];
+        args[j]->pattern = argv[2];
         args[j]->output_queue = output_queue;
+        threads.push_back(pthread_t());
         pthread_create(&threads[j], NULL, &find, args[j]);
     }
     
