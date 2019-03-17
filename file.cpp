@@ -9,19 +9,19 @@
 #include <sys/types.h>  //dir
 #include <unistd.h>     //chdir
 #include <dirent.h>     //dir
+#include <queue>
 
-typedef struct {
-    std::string name;
-    char *pattern;
-    pthread_mutex_t output_queue;
-} thread_arg;
+std::regex pattern;
+std::queue<std::string> file_queue;
+pthread_mutex_t sem_queue;
+pthread_mutex_t output_queue;
 
 /*
-    This function will look recursively for all files .txt inside dirr_name and put their names on name_list.
+    This function will look recursively for all files .txt inside dirr_name and push their location on file_queue.
 */
-void getfiles (std::string dirr_name, std::vector <std::string> &name_list) {
+void getfiles (std::string dirr_name) {
     DIR *current = opendir(dirr_name.c_str());  
-    std::regex pattern ("\\.txt"); //will only look for .txt for now.    
+    std::regex pattern ("\\.txt"); // will only look for .txt for now.    
 
     if (current == NULL) {
         std::cerr << "Error when trying to open " << dirr_name << std::endl;
@@ -30,11 +30,11 @@ void getfiles (std::string dirr_name, std::vector <std::string> &name_list) {
     for (dirent *curr_file = readdir(current); curr_file != NULL; curr_file = readdir(current)) {
         if (curr_file->d_type == DT_DIR) {            
             if (std::strcmp(curr_file->d_name, ".") && std::strcmp(curr_file->d_name, "..")) {
-                getfiles(dirr_name + "/" + curr_file->d_name, name_list);
+                getfiles(dirr_name + "/" + curr_file->d_name);
             }
         }
         else if (std::regex_search(curr_file->d_name, pattern)) {
-            name_list.push_back(dirr_name + "/" + curr_file->d_name);
+            file_queue.push(dirr_name + "/" + curr_file->d_name);
         }
     }
     
@@ -43,32 +43,42 @@ void getfiles (std::string dirr_name, std::vector <std::string> &name_list) {
 }
 
 /*
-    This function will look for all lines with the regex pattern pat in the file name. 
+    This thread will look for all lines with the regex pattern in the files that are left in file_queue. 
     All lines that have a match will be printed to the stdout.
 */
-void *find (void *args) {
-    thread_arg *arg = (thread_arg *) args;
+void *find (void *) {
     std::ifstream file;
-    std::string line, output;
-    std::regex pattern;
-    int line_number = 0;
-    pattern = arg->pattern;
-    file.open(arg->name.c_str());
-    if (file.fail()) {
-        pthread_mutex_lock(&arg->output_queue);
-        std::cerr << "There was an error while opening the file " << arg->name << std::endl;
-        pthread_mutex_unlock(&arg->output_queue);
-    }
-    while (getline(file, line)) {
-        if (std::regex_search(line, pattern)) {
-            output.append(arg->name + ": " + std::to_string(line_number) + "\n");
+    while (1) {
+        std::string name;
+        pthread_mutex_lock(&sem_queue);
+        if (file_queue.empty()) {
+            pthread_mutex_unlock(&sem_queue);
+            return NULL;
         }
-        line_number++;
+        else {
+            name = file_queue.front();
+            file_queue.pop();
+        }
+        pthread_mutex_unlock(&sem_queue);
+        std::string line, output;
+        int line_number = 0;
+        file.open(name.c_str());
+        if (file.fail()) {
+            pthread_mutex_lock(&output_queue);
+            std::cerr << "There was an error while opening the file " << name << std::endl;
+            pthread_mutex_unlock(&output_queue);
+        }
+        while (getline(file, line)) {
+            if (std::regex_search(line, pattern)) {
+                output.append(name + ": " + std::to_string(line_number) + "\n");
+            }
+            line_number++;
+        }
+        pthread_mutex_lock(&output_queue);
+        std::cout << output;
+        pthread_mutex_unlock(&output_queue);
+        file.close();
     }
-    pthread_mutex_lock(&arg->output_queue);
-    std::cout << output;
-    pthread_mutex_unlock(&arg->output_queue);
-    file.close();
     return NULL;
 }
 
@@ -78,21 +88,20 @@ int main (int argc, char **argv) {
         return 1;
     }
 
-    std::vector <std::string> names_list;
-    std::vector <thread_arg *> args;
+    int max_threads = std::stoi(argv[1]);
+    pattern = argv[2];
     std::vector <pthread_t> threads;
-    pthread_mutex_t output_queue;
     pthread_mutex_init(&output_queue, NULL);
+    pthread_mutex_init(&sem_queue, NULL);
     
-    getfiles(argv[3], names_list);
-    for (auto i = names_list.begin(); i != names_list.end(); i++) {        
-        auto j = i - names_list.begin();
-        args.push_back(new thread_arg());
-        args[j]->name = *i;
-        args[j]->pattern = argv[2];
-        args[j]->output_queue = output_queue;
+    getfiles(argv[3]);
+    if (static_cast<int>(file_queue.size()) < max_threads) {
+        max_threads = file_queue.size();
+    }
+
+    for (auto i = 0; i != max_threads; i++) {
         threads.push_back(pthread_t());
-        pthread_create(&threads[j], NULL, &find, args[j]);
+        pthread_create(&threads[i], NULL, &find, NULL);
     }
     
     for (auto i = threads.begin(); i != threads.end(); i++) {
