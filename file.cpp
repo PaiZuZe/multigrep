@@ -2,26 +2,22 @@
 #include <fstream>      //file
 #include <string>
 #include <regex>
-#include <new>
-
-#include <stdlib.h>
 #include <pthread.h>
-#include <sys/types.h>  //dir
-#include <unistd.h>     //chdir
 #include <dirent.h>     //dir
 #include <queue>
 
 std::regex pattern;
-std::queue<std::string> file_queue;
+std::queue<std::string> file_queue; // Files to grep
 pthread_mutex_t sem_queue;
 pthread_mutex_t output_queue;
 
 /*
-    This function will look recursively for all files .txt inside dirr_name and push their location on file_queue.
+    This function will look recursively for all files .txt inside dirr_name and push their 
+    location on file_queue.
 */
 void getfiles (std::string dirr_name) {
     DIR *current = opendir(dirr_name.c_str());  
-    std::regex pattern ("\\.txt"); // will only look for .txt for now.    
+    std::regex pattern ("\\.txt"); // Will only look for .txt for now.    
 
     if (current == NULL) {
         std::cerr << "Error when trying to open " << dirr_name << std::endl;
@@ -43,13 +39,16 @@ void getfiles (std::string dirr_name) {
 }
 
 /*
-    This thread will look for all lines with the regex pattern in the files that are left in file_queue. 
-    All lines that have a match will be printed to the stdout.
+    This thread will look for all lines with the regex pattern in the files that are left in 
+    file_queue. All lines that have a match will be printed to the stdout.
 */
 void *find (void *) {
     std::ifstream file;
+    
     while (1) {
         std::string name;
+        
+        // Looks for available files to process in the global queue.
         pthread_mutex_lock(&sem_queue);
         if (file_queue.empty()) {
             pthread_mutex_unlock(&sem_queue);
@@ -60,6 +59,8 @@ void *find (void *) {
             file_queue.pop();
         }
         pthread_mutex_unlock(&sem_queue);
+        
+        // Process grep in the file removed from the queue.
         std::string line, output;
         int line_number = 0;
         file.open(name.c_str());
@@ -82,6 +83,10 @@ void *find (void *) {
     return NULL;
 }
 
+/* 
+    Process arguments, initialize semaphores and the global queue of files to grep. 
+    Create threads to grep the files in the file_queue.
+*/
 int main (int argc, char **argv) {
     if (argc != 4) {
         std::cout << "Wrong number of arguments: it's " << argc << " , should be 4\n";
