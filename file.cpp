@@ -99,6 +99,12 @@ int main (int argc, char **argv) {
     pthread_mutex_init(&output_queue, NULL);
     pthread_mutex_init(&sem_queue, NULL);
     
+    // Removes unnecessary slash from directory name.
+    char *last_char = &argv[3][static_cast<int>(strlen(argv[3])) -1];
+    if (*last_char == '/') {
+        *last_char = '\0';
+    }
+
     getfiles(argv[3]);
     if (static_cast<int>(file_queue.size()) < max_threads) {
         max_threads = file_queue.size();
