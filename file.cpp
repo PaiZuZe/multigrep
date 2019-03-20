@@ -8,8 +8,8 @@
 
 std::regex pattern;
 std::queue<std::string> file_queue; // Files to grep
-pthread_mutex_t sem_queue;
-pthread_mutex_t output_queue;
+pthread_mutex_t file_queue_mutex;
+pthread_mutex_t output_mutex;
 
 /*
     This function will look recursively for all files .txt inside dirr_name and push their 
@@ -43,31 +43,30 @@ void getfiles (std::string dirr_name) {
     file_queue. All lines that have a match will be printed to the stdout.
 */
 void *find (void *) {
+    std::string name;
     std::ifstream file;
     
     while (1) {
-        std::string name;
-        
         // Looks for available files to process in the global queue.
-        pthread_mutex_lock(&sem_queue);
+        pthread_mutex_lock(&file_queue_mutex);
         if (file_queue.empty()) {
-            pthread_mutex_unlock(&sem_queue);
+            pthread_mutex_unlock(&file_queue_mutex);
             return NULL;
         }
         else {
             name = file_queue.front();
             file_queue.pop();
         }
-        pthread_mutex_unlock(&sem_queue);
+        pthread_mutex_unlock(&file_queue_mutex);
         
         // Process grep in the file removed from the queue.
         std::string line, output;
         int line_number = 0;
         file.open(name.c_str());
         if (file.fail()) {
-            pthread_mutex_lock(&output_queue);
+            pthread_mutex_lock(&output_mutex);
             std::cerr << "There was an error while opening the file " << name << std::endl;
-            pthread_mutex_unlock(&output_queue);
+            pthread_mutex_unlock(&output_mutex);
         }
         while (getline(file, line)) {
             if (std::regex_search(line, pattern)) {
@@ -75,9 +74,9 @@ void *find (void *) {
             }
             line_number++;
         }
-        pthread_mutex_lock(&output_queue);
+        pthread_mutex_lock(&output_mutex);
         std::cout << output;
-        pthread_mutex_unlock(&output_queue);
+        pthread_mutex_unlock(&output_mutex);
         file.close();
     }
     return NULL;
@@ -96,8 +95,8 @@ int main (int argc, char **argv) {
     int max_threads = std::stoi(argv[1]);
     pattern = argv[2];
     std::vector <pthread_t> threads;
-    pthread_mutex_init(&output_queue, NULL);
-    pthread_mutex_init(&sem_queue, NULL);
+    pthread_mutex_init(&output_mutex, NULL);
+    pthread_mutex_init(&file_queue_mutex, NULL);
     
     // Removes unnecessary slash from directory name.
     char *last_char = &argv[3][static_cast<int>(strlen(argv[3])) -1];
