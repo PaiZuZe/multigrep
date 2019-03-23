@@ -95,8 +95,14 @@ int main (int argc, char **argv) {
     int max_threads = std::stoi(argv[1]);
     pattern = argv[2];
     std::vector <pthread_t> threads;
-    pthread_mutex_init(&output_mutex, NULL);
-    pthread_mutex_init(&file_queue_mutex, NULL);
+    if (pthread_mutex_init(&output_mutex, NULL)) {
+        std::cerr << "Unable to create output_mutex, terminating\n";
+        exit(EXIT_FAILURE);
+    }
+    if (pthread_mutex_init(&file_queue_mutex, NULL)) {
+        std::cerr << "Unable to create file_queue_mutex, terminating\n";
+        exit(EXIT_FAILURE);
+    }
     
     // Removes unnecessary slash from directory name.
     char *last_char = &argv[3][static_cast<int>(strlen(argv[3])) -1];
@@ -106,12 +112,14 @@ int main (int argc, char **argv) {
 
     getfiles(argv[3]);
     if (static_cast<int>(file_queue.size()) < max_threads) {
-        max_threads = file_queue.size();
+        max_threads = static_cast<int>(file_queue.size());
     }
 
-    for (auto i = 0; i != max_threads; i++) {
+    for (int i = 0; i != max_threads; i++) {
         threads.push_back(pthread_t());
-        pthread_create(&threads[i], NULL, &find, NULL);
+        if (pthread_create(&threads[i], NULL, &find, NULL)) {
+            std::cerr << "Failed to create thread number " << i << " \n"; 
+        }
     }
     
     for (auto i = threads.begin(); i != threads.end(); i++) {
