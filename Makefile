@@ -7,4 +7,4 @@ clean:
 	rm pgrep
 
 test:
-	./pgrep 32 ~/Documents i
+	./pgrep 32 i ~/Documents
