@@ -1,7 +1,7 @@
 CFLAGS=-Wall -Wextra -Werror -pedantic -lpthread
 
-file: file.cpp
-	g++ file.cpp $(CFLAGS) -g -o pgrep
+file: pgrep.cpp
+	g++ pgrep.cpp $(CFLAGS) -g -o pgrep
 
 clean:
 	rm pgrep
