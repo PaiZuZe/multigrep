@@ -1,3 +1,13 @@
+/*
+ *      pgrep.cpp
+ *
+ *      pgrep does a recursive search in the DIRECTORY_PATH searching for a PATTERN in each 
+ *      FILE using at most MAX_THREADS. pgrep prints which lines of a file matched the PATTERN.
+ *
+ *      by Guilherme Vieira and Victor Gramuglia
+ *
+ */
+
 #include <iostream>     //cout
 #include <fstream>      //file
 #include <string>
@@ -11,17 +21,21 @@ std::queue<std::string> file_queue; // Files to grep
 pthread_mutex_t file_queue_mutex;
 pthread_mutex_t output_mutex;
 
+#define DIE(...) { \
+        std::cerr << __VA_ARGS__; \
+        std::exit (EXIT_FAILURE); \
+}
+
 /*
     This function will look recursively for all files .txt inside dirr_name and push their 
     location on file_queue.
 */
 void getfiles (std::string dirr_name) {
     DIR *current = opendir(dirr_name.c_str());  
-    std::regex pattern ("\\.txt"); // Will only look for .txt for now.    
+    std::regex pattern ("\\.txt");   
 
     if (current == NULL) {
-        std::cerr << "Error when trying to open " << dirr_name << std::endl;
-        std::exit (EXIT_FAILURE);
+        DIE("Error when trying to open " << dirr_name << std::endl);
     }
     for (dirent *curr_file = readdir(current); curr_file != NULL; curr_file = readdir(current)) {
         if (curr_file->d_type == DT_DIR) {            
@@ -67,6 +81,7 @@ void *find (void *) {
             pthread_mutex_lock(&output_mutex);
             std::cerr << "There was an error while opening the file " << name << std::endl;
             pthread_mutex_unlock(&output_mutex);
+            continue;
         }
         while (getline(file, line)) {
             if (std::regex_search(line, pattern)) {
@@ -96,12 +111,10 @@ int main (int argc, char **argv) {
     pattern = argv[2];
     std::vector <pthread_t> threads;
     if (pthread_mutex_init(&output_mutex, NULL)) {
-        std::cerr << "Unable to create output_mutex, terminating\n";
-        exit(EXIT_FAILURE);
+        DIE("Unable to create output_mutex, terminating\n");
     }
     if (pthread_mutex_init(&file_queue_mutex, NULL)) {
-        std::cerr << "Unable to create file_queue_mutex, terminating\n";
-        exit(EXIT_FAILURE);
+        DIE("Unable to create file_queue_mutex, terminating\n");
     }
     
     // Removes unnecessary slash from directory name.
@@ -115,15 +128,20 @@ int main (int argc, char **argv) {
         max_threads = static_cast<int>(file_queue.size());
     }
 
-    for (int i = 0; i != max_threads; i++) {
+    for (auto i = 0; i != max_threads; i++) {
         threads.push_back(pthread_t());
         if (pthread_create(&threads[i], NULL, &find, NULL)) {
-            std::cerr << "Failed to create thread number " << i << " \n"; 
+            DIE("Failed to create thread number " << i << " \n");
         }
     }
     
     for (auto i = threads.begin(); i != threads.end(); i++) {
-        pthread_join(*i, NULL);
+        if (pthread_join(*i, NULL)) {
+            DIE("Failed to join thread number " << *i << " \n");
+        }
     }
+    pthread_mutex_destroy(&output_mutex);
+    pthread_mutex_destroy(&file_queue_mutex);
+    
     return 0;
 }
