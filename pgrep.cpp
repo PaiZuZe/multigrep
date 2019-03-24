@@ -27,6 +27,39 @@ pthread_mutex_t output_mutex;
 }
 
 /*
+    Looks through the files graph using a iteractive breath first search, all files
+    that have a .txt will be put in file_queue.
+*/
+void ibfs(std::string dirr_name) {
+    DIR *current;
+    std::string active;
+    std::queue<std::string> frontier;
+    frontier.push(dirr_name);
+    std::regex pattern ("\\.txt");
+    
+    while (!frontier.empty()) {
+        active = frontier.front();
+        frontier.pop();
+        current = opendir(active.c_str());
+        if (current == NULL) {
+            DIE("Error when trying to open " << active << std::endl);
+        }   
+        for (dirent *curr_file = readdir(current); curr_file != NULL; curr_file = readdir(current)) {
+            if (curr_file->d_type == DT_DIR) {            
+                if (std::strcmp(curr_file->d_name, ".") && std::strcmp(curr_file->d_name, "..")) {
+                    frontier.push(((std::string("").append(active)).append("/")).append(curr_file->d_name));
+                }
+            }
+            else if (std::regex_search(curr_file->d_name, pattern)) {
+                file_queue.push(((std::string("").append(active)).append("/")).append(curr_file->d_name));
+            }
+        }
+        closedir(current);
+    }
+    return;
+}
+
+/*
     This function will look recursively for all files .txt inside dirr_name and push their 
     location on file_queue.
 */
