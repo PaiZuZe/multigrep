@@ -16,13 +16,17 @@
 #include <dirent.h>     //dir
 #include <queue>
 
+bool finished;
 std::regex pattern;
 std::queue<std::string> file_queue; // Files to grep
 pthread_mutex_t file_queue_mutex;
 pthread_mutex_t output_mutex;
+pthread_mutex_t fin_mutex;
 
 #define DIE(...) { \
+        pthread_mutex_lock(&output_mutex); \
         std::cerr << __VA_ARGS__; \
+        pthread_mutex_unlock(&output_mutex); \
         std::exit (EXIT_FAILURE); \
 }
 
@@ -30,7 +34,8 @@ pthread_mutex_t output_mutex;
     Looks through the files graph using a iteractive breath first search, all files
     that have a .txt will be put in file_queue.
 */
-void ibfs(std::string dirr_name) {
+void *getfiles(void *dirr) {
+    std::string dirr_name = static_cast<char *>(dirr);
     DIR *current;
     std::string active;
     std::queue<std::string> frontier;
@@ -51,38 +56,17 @@ void ibfs(std::string dirr_name) {
                 }
             }
             else if (std::regex_search(curr_file->d_name, pattern)) {
+                pthread_mutex_lock(&file_queue_mutex);
                 file_queue.push(((std::string("").append(active)).append("/")).append(curr_file->d_name));
+                pthread_mutex_unlock(&file_queue_mutex);
             }
         }
         closedir(current);
     }
-    return;
-}
-
-/*
-    This function will look recursively for all files .txt inside dirr_name and push their 
-    location on file_queue.
-*/
-void getfiles (std::string dirr_name) {
-    DIR *current = opendir(dirr_name.c_str());  
-    std::regex pattern ("\\.txt");   
-
-    if (current == NULL) {
-        DIE("Error when trying to open " << dirr_name << std::endl);
-    }
-    for (dirent *curr_file = readdir(current); curr_file != NULL; curr_file = readdir(current)) {
-        if (curr_file->d_type == DT_DIR) {            
-            if (std::strcmp(curr_file->d_name, ".") && std::strcmp(curr_file->d_name, "..")) {
-                getfiles(dirr_name + "/" + curr_file->d_name);
-            }
-        }
-        else if (std::regex_search(curr_file->d_name, pattern)) {
-            file_queue.push(dirr_name + "/" + curr_file->d_name);
-        }
-    }
-    
-    closedir(current);
-    return;
+    pthread_mutex_lock(&fin_mutex);
+    finished = true;
+    pthread_mutex_unlock(&fin_mutex);
+    return NULL;
 }
 
 /*
@@ -97,8 +81,17 @@ void *find (void *) {
         // Looks for available files to process in the global queue.
         pthread_mutex_lock(&file_queue_mutex);
         if (file_queue.empty()) {
-            pthread_mutex_unlock(&file_queue_mutex);
-            return NULL;
+            pthread_mutex_lock(&fin_mutex);
+            if (finished) {
+                pthread_mutex_unlock(&fin_mutex);
+                pthread_mutex_unlock(&file_queue_mutex);
+                return NULL;
+            }
+            else {
+                pthread_mutex_unlock(&fin_mutex);
+                pthread_mutex_unlock(&file_queue_mutex);
+                continue;
+            }
         }
         else {
             name = file_queue.front();
@@ -127,7 +120,6 @@ void *find (void *) {
         pthread_mutex_unlock(&output_mutex);
         file.close();
     }
-    return NULL;
 }
 
 /* 
@@ -139,14 +131,22 @@ int main (int argc, char **argv) {
         std::cout << "Wrong number of arguments: it's " << argc << " , should be 4\n";
         return 1;
     }
-
+    finished = false;
     int max_threads = std::stoi(argv[1]);
     pattern = argv[2];
+    pthread_t producer;
     std::vector <pthread_t> threads;
+
+    if (max_threads < 3) {
+        DIE("This program needs at least 3 threads to run\n");
+    }
     if (pthread_mutex_init(&output_mutex, NULL)) {
         DIE("Unable to create output_mutex, terminating\n");
     }
     if (pthread_mutex_init(&file_queue_mutex, NULL)) {
+        DIE("Unable to create file_queue_mutex, terminating\n");
+    }
+    if (pthread_mutex_init(&fin_mutex, NULL)) {
         DIE("Unable to create file_queue_mutex, terminating\n");
     }
     
@@ -155,13 +155,10 @@ int main (int argc, char **argv) {
     if (*last_char == '/') {
         *last_char = '\0';
     }
-
-    getfiles(argv[3]);
-    if (static_cast<int>(file_queue.size()) < max_threads) {
-        max_threads = static_cast<int>(file_queue.size());
+    if (pthread_create(&producer, NULL, getfiles, static_cast<void *>(argv[3]))) {
+        DIE("Failed to create producer thread\n");
     }
-
-    for (auto i = 0; i != max_threads; i++) {
+    for (auto i = 0; i != max_threads - 2; i++) {
         threads.push_back(pthread_t());
         if (pthread_create(&threads[i], NULL, &find, NULL)) {
             DIE("Failed to create thread number " << i << " \n");
