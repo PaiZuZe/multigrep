@@ -15,13 +15,13 @@
 #include <pthread.h>
 #include <dirent.h>     //dir
 #include <queue>
+#include <time.h>
 
 bool finished;
 std::regex pattern;
 std::queue<std::string> file_queue; // Files to grep
 pthread_mutex_t file_queue_mutex;
 pthread_mutex_t output_mutex;
-pthread_mutex_t fin_mutex;
 
 #define DIE(...) { \
         pthread_mutex_lock(&output_mutex); \
@@ -63,9 +63,7 @@ void *getfiles(void *dirr) {
         }
         closedir(current);
     }
-    pthread_mutex_lock(&fin_mutex);
     finished = true;
-    pthread_mutex_unlock(&fin_mutex);
     return NULL;
 }
 
@@ -76,20 +74,21 @@ void *getfiles(void *dirr) {
 void *find (void *) {
     std::string name;
     std::ifstream file;
-    
+    struct timespec time;
+    time.tv_sec = 0;
+    time.tv_nsec = 1000;
+
     while (1) {
         // Looks for available files to process in the global queue.
         pthread_mutex_lock(&file_queue_mutex);
         if (file_queue.empty()) {
-            pthread_mutex_lock(&fin_mutex);
             if (finished) {
-                pthread_mutex_unlock(&fin_mutex);
                 pthread_mutex_unlock(&file_queue_mutex);
                 return NULL;
             }
             else {
-                pthread_mutex_unlock(&fin_mutex);
                 pthread_mutex_unlock(&file_queue_mutex);
+                nanosleep(&time, NULL);
                 continue;
             }
         }
@@ -144,9 +143,6 @@ int main (int argc, char **argv) {
         DIE("Unable to create output_mutex, terminating\n");
     }
     if (pthread_mutex_init(&file_queue_mutex, NULL)) {
-        DIE("Unable to create file_queue_mutex, terminating\n");
-    }
-    if (pthread_mutex_init(&fin_mutex, NULL)) {
         DIE("Unable to create file_queue_mutex, terminating\n");
     }
     
