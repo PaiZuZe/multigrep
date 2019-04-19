@@ -4,24 +4,24 @@
  *      pgrep does a recursive search in the DIRECTORY_PATH searching for a PATTERN in each 
  *      FILE using at most MAX_THREADS. pgrep prints which lines of a file matched the PATTERN.
  *
- *      by Guilherme Vieira and Victor Gramuglia
+ *      by Gabriel Kazuyuki Guilherme Vieira and Victor Gramuglia
  *
  */
 
-#include <iostream>     //cout
-#include <fstream>      //file
+#include <iostream>     // cout
+#include <fstream>      // file
 #include <string>
 #include <regex>
 #include <pthread.h>
-#include <dirent.h>     //dir
+#include <dirent.h>     // dir
 #include <queue>
 #include <time.h>
 
-bool finished;
+bool finished; // Tells weather the producer getfiles has finished or not
 std::regex pattern;
-std::queue<std::string> file_queue; // Files to grep
-pthread_mutex_t file_queue_mutex;
 pthread_mutex_t output_mutex;
+pthread_mutex_t file_queue_mutex;
+std::queue<std::string> file_queue; // Contains files to grep
 
 #define DIE(...) { \
         pthread_mutex_lock(&output_mutex); \
@@ -31,15 +31,15 @@ pthread_mutex_t output_mutex;
 }
 
 /*
-    Looks through the files graph using a iteractive breath first search, all files
+    Looks through the files graph using a iterative breath first search, all files
     that have a .txt will be put in file_queue.
 */
 void *getfiles(void *dirr) {
     std::string dirr_name = static_cast<char *>(dirr);
     DIR *current;
-    std::string active;
-    std::queue<std::string> frontier;
-    frontier.push(dirr_name);
+    std::string active; // Directory currently being explored
+    std::queue<std::string> frontier; // Contains the directories to be explored
+    frontier.push(dirr_name); 
     std::regex pattern ("\\.txt");
     
     while (!frontier.empty()) {
@@ -48,14 +48,15 @@ void *getfiles(void *dirr) {
         current = opendir(active.c_str());
         if (current == NULL) {
             DIE("Error when trying to open " << active << std::endl);
-        }   
+        }
+        // Reads every file in the active directory
         for (dirent *curr_file = readdir(current); curr_file != NULL; curr_file = readdir(current)) {
-            if (curr_file->d_type == DT_DIR) {            
+            if (curr_file->d_type == DT_DIR) { // Add directories to the frontier            
                 if (std::strcmp(curr_file->d_name, ".") && std::strcmp(curr_file->d_name, "..")) {
                     frontier.push(((std::string("").append(active)).append("/")).append(curr_file->d_name));
                 }
             }
-            else if (std::regex_search(curr_file->d_name, pattern)) {
+            else if (std::regex_search(curr_file->d_name, pattern)) { // Add .txt files to the file_queue
                 pthread_mutex_lock(&file_queue_mutex);
                 file_queue.push(((std::string("").append(active)).append("/")).append(curr_file->d_name));
                 pthread_mutex_unlock(&file_queue_mutex);
@@ -64,11 +65,12 @@ void *getfiles(void *dirr) {
         closedir(current);
     }
     finished = true;
+
     return NULL;
 }
 
 /*
-    This thread will look for all lines with the regex pattern in the files that are left in 
+    This thread will search for all lines containing the regex pattern in the files that are left in 
     file_queue. All lines that have a match will be printed to the stdout.
 */
 void *find (void *) {
@@ -108,7 +110,7 @@ void *find (void *) {
             pthread_mutex_unlock(&output_mutex);
             continue;
         }
-        while (getline(file, line)) {
+        while (getline(file, line)) { 
             if (std::regex_search(line, pattern)) {
                 output.append(name + ": " + std::to_string(line_number) + "\n");
             }
