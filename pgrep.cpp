@@ -4,7 +4,7 @@
  *      pgrep does a recursive search in the DIRECTORY_PATH searching for a PATTERN in each 
  *      FILE using at most MAX_THREADS. pgrep prints which lines of a file matched the PATTERN.
  *
- *      by Gabriel Kazuyuki Guilherme Vieira and Victor Gramuglia
+ *      by Gabriel Kazuyuki, Guilherme Vieira and Victor Gramuglia
  *
  */
 
@@ -40,8 +40,7 @@ void *getfiles(void *dirr) {
     std::string active; // Directory currently being explored
     std::queue<std::string> frontier; // Contains the directories to be explored
     frontier.push(dirr_name); 
-    std::regex pattern ("\\.txt");
-    
+
     while (!frontier.empty()) {
         active = frontier.front();
         frontier.pop();
@@ -56,7 +55,7 @@ void *getfiles(void *dirr) {
                     frontier.push(((std::string("").append(active)).append("/")).append(curr_file->d_name));
                 }
             }
-            else if (std::regex_search(curr_file->d_name, pattern)) { // Add .txt files to the file_queue
+            else { // Add files to the file_queue
                 pthread_mutex_lock(&file_queue_mutex);
                 file_queue.push(((std::string("").append(active)).append("/")).append(curr_file->d_name));
                 pthread_mutex_unlock(&file_queue_mutex);
